@@ -15,8 +15,26 @@ instance="001"
 
 ### Set variables
 
+# New Relic Logs API
+newRelicLogsApi="https://log-api.eu.newrelic.com/log/v1"
+
 # AKS
 aksName="aks$program$locationShort$project$stageShort$instance"
+
+# Logstash
+declare -A logstash
+logstash["name"]="logstash"
+logstash["namespace"]="elk"
+logstash["httpPort"]=9600
+logstash["beatsPort"]=5044
+
+# Filebeat
+declare -A filebeat
+filebeat["name"]="filebeat"
+filebeat["namespace"]="elk"
+filebeat["logstashName"]=${logstash[name]}
+filebeat["logstashPort"]=5044
+filebeat["namespaceToWatch"]="third"
 
 # Zookeeper
 declare -A zookeeper
@@ -86,9 +104,19 @@ fifth["port"]=8080
 ### Build & Push ###
 ####################
 
+# Logstash
+echo -e "\n--- Logstash ---\n"
+docker build \
+  --platform linux/amd64 \
+  --tag "${DOCKERHUB_NAME}/${logstash[name]}" \
+  "../../apps/logstash/."
+docker push "${DOCKERHUB_NAME}/${logstash[name]}"
+echo -e "\n------\n"
+
 # Zookeeper
 echo -e "\n--- Zookeeper ---\n"
 docker build \
+  --platform linux/amd64 \
   --tag "${DOCKERHUB_NAME}/${zookeeper[name]}" \
   "../../apps/kafka/zookeeper/."
 docker push "${DOCKERHUB_NAME}/${zookeeper[name]}"
@@ -97,6 +125,7 @@ echo -e "\n------\n"
 # Kafka
 echo -e "\n--- Kafka ---\n"
 docker build \
+  --platform linux/amd64 \
   --tag "${DOCKERHUB_NAME}/${kafka[name]}" \
   "../../apps/kafka/kafka/."
 docker push "${DOCKERHUB_NAME}/${kafka[name]}"
@@ -105,6 +134,7 @@ echo -e "\n------\n"
 # Zipkin Exporter
 echo -e "\n--- Zipkin Exporter ---\n"
 docker build \
+  --platform linux/amd64 \
   --tag "${DOCKERHUB_NAME}/${zipkinexporter[name]}" \
   "../../apps/${zipkinexporter[name]}/."
 docker push "${DOCKERHUB_NAME}/${zipkinexporter[name]}"
@@ -113,6 +143,7 @@ echo -e "\n------\n"
 # Proxy
 echo -e "\n--- Proxy ---\n"
 docker build \
+  --platform linux/amd64 \
   --build-arg newRelicAppName=${proxy[name]} \
   --build-arg newRelicLicenseKey=$NEWRELIC_LICENSE_KEY \
   --tag "${DOCKERHUB_NAME}/${proxy[name]}" \
@@ -175,6 +206,7 @@ echo -e "\n------\n"
 # Fifth
 echo -e "\n--- Fifth ---\n"
 docker build \
+  --platform linux/amd64 \
   --build-arg newRelicAppName=${fifth[name]} \
   --build-arg newRelicLicenseKey=$NEWRELIC_LICENSE_KEY \
   --tag "${DOCKERHUB_NAME}/${fifth[name]}" \
@@ -236,6 +268,44 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --set defaultBackend.image.tag="1.5" \
   --set defaultBackend.image.digest=""
 #########
+
+###########
+### ELK ###
+###########
+
+# Logstash
+echo "Deploying Logstash ..."
+
+helm upgrade ${logstash[name]} \
+  --install \
+  --wait \
+  --debug \
+  --create-namespace \
+  --namespace ${logstash[namespace]} \
+  --set name=${logstash[name]} \
+  --set namespace=${logstash[namespace]} \
+  --set dockerhubName=$DOCKERHUB_NAME \
+  --set httpPort=${logstash[httpPort]} \
+  --set beatsPort=${logstash[beatsPort]} \
+  --set newRelicLicenseKey=$NEWRELIC_LICENSE_KEY \
+  --set newRelicLogsApi=$newRelicLogsApi \
+  ../charts/logstash
+
+# Filebeat
+echo "Deploying Filebeat ..."
+
+helm upgrade ${filebeat[name]} \
+  --install \
+  --wait \
+  --debug \
+  --create-namespace \
+  --namespace ${filebeat[namespace]} \
+  --set name=${filebeat[name]} \
+  --set namespace=${filebeat[namespace]} \
+  --set logstashName=${filebeat[logstashName]} \
+  --set logstashPort=${filebeat[logstashPort]} \
+  --set namespaceToWatch=${filebeat[namespaceToWatch]} \
+  ../charts/filebeat
 
 #############
 ### Kafka ###
