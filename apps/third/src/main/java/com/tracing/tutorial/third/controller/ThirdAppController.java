@@ -6,6 +6,7 @@ import com.tracing.tutorial.third.dto.ResponseDto;
 import com.tracing.tutorial.third.service.thirdmethod.ThirdMethodService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +30,8 @@ public class ThirdAppController {
             @RequestHeader Map<String, String> headers,
             @RequestBody RequestDto requestDto
     ) {
+        MDC.put("test.id", "test");
+
         logger.info("Third Method is triggered...");
 
         if (headers.containsKey("traceparent")) {
@@ -39,6 +42,9 @@ public class ThirdAppController {
                 .trim()
                 .split("-")[1];
 
+            MDC.put("trace.id", traceId);
+            MDC.put("traceId", traceId);
+
             tracer.currentSpanCustomizer()
                 .tag("existingTraceId", traceId);
         }
@@ -47,6 +53,8 @@ public class ThirdAppController {
             firstMethodService.thirdMethod(requestDto);
 
         logger.info("Third Method is executed successfully.");
+
+        MDC.clear();
 
         return responseDto;
     }
